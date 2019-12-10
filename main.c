@@ -72,6 +72,7 @@ char *paste_text = NULL;
 char paste_text_data[65536];
 bool pasting_bas = false;
 
+extern uint8_t ram_bank;
 uint16_t num_ram_banks = 64; // 512 KB default
 
 bool log_video = false;
@@ -917,7 +918,7 @@ emulator_loop(void *param)
 			if (label) {
 				printf("%s", label);
 			}
-			for (int i = 0; i < 10 - label_len; i++) {
+			for (int i = 0; i < 25 - label_len; i++) {
 				printf(" ");
 			}
 			printf(" %02x:.,%04x ", memory_get_rom_bank(), pc);
@@ -941,9 +942,7 @@ emulator_loop(void *param)
 //			printf(" --- r1H:%01x\n", RAM[5]);
 
 			printf(" ---");
-			for (int i = 0; i < 7; i++) {
-				printf(" r%i:%04x", i, RAM[2 + i*2] | RAM[3 + i*2] << 8);
-			}
+         printf(" %02x", ram_bank);
 			printf("\n");
 		}
 #endif
