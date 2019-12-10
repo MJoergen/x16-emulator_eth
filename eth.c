@@ -126,6 +126,9 @@ static void
 eth_tftp_respond()
 {
    int bytes_read;
+   int udp_payload_len;
+   uint16_t block;
+   uint32_t address;
 
    // TFTP packet
    t_tftp_header *tftp_rx_header = (t_tftp_header *) eth_tx_mem;
@@ -134,19 +137,21 @@ eth_tftp_respond()
    memcpy(eth_buffer, eth_tx_mem, 0x800);
    t_tftp_header *tftp_tx_header = (t_tftp_header *) eth_buffer;
 
+   udp_payload_len = 0;
    switch (ntohs(tftp_rx_header->opcode))
    {
       case 0x0001 : // RRQ
          // Copy filename
          strncpy(eth_filename, (char *)(&tftp_rx_header->block), sizeof(eth_filename));
 
-         // Try to open file
+         // Try to open file for read
          eth_file = fopen(eth_filename, "rb");
          if (!eth_file) {
             printf("Cannot open %s!\n", eth_filename);
             return;
          }
 
+         // Build TFTP response
          tftp_tx_header->opcode = htons(0x0003);             // DATA
          tftp_tx_header->block  = htons(0x0001);             // First block
          bytes_read = fread(tftp_tx_header->data, 1, 512, eth_file);
@@ -163,34 +168,54 @@ eth_tftp_respond()
          }
          printf("\n");
 
-         // UDP header
-         tftp_tx_header->udp_header.dst = tftp_rx_header->udp_header.src;
-         tftp_tx_header->udp_header.src = htons(0x4A4D);    // "JM"
-         tftp_tx_header->udp_header.len = htons(bytes_read+4+8);
-
-         // IP header
-         tftp_tx_header->udp_header.ip_header.dst = tftp_rx_header->udp_header.ip_header.src;
-         tftp_tx_header->udp_header.ip_header.src = tftp_rx_header->udp_header.ip_header.dst;
-
-         // length is in little-endian
-         tftp_tx_header->udp_header.ip_header.mac_header.eth_header.length =
-            tftp_tx_header->data - (uint8_t *)tftp_tx_header + bytes_read-2;
-
-         eth_buffer_valid = true;
-         eth_rx_counter = 200;   // Corresponds to 276 bytes of the MAC frame.
+         udp_payload_len = bytes_read+4;
          break;
 
       case 0x0002 : // WRQ
+         // Copy filename
+         strncpy(eth_filename, (char *)(&tftp_rx_header->block), sizeof(eth_filename));
+
+         // Try to open file for write
+         eth_file = fopen(eth_filename, "wb");
+         if (!eth_file) {
+            printf("Cannot open %s!\n", eth_filename);
+            return;
+         }
+
+         // Build TFTP response
+         tftp_tx_header->opcode = htons(0x0004);             // ACK
+         tftp_tx_header->block  = htons(0x0000);             // No blocks received yet
+
+         udp_payload_len = 4;
          break;
 
       case 0x0003 : // DATA
+         block      = ntohs(tftp_rx_header->block);
+         address    = (block-1)*512UL;
+         bytes_read = ntohs(tftp_tx_header->udp_header.len)-8-4;
+
+         printf("address:%08x, bytes:%04x\n", address, bytes_read);
+         fseek(eth_file, address, SEEK_SET);
+         fwrite(tftp_rx_header->data, 1, bytes_read, eth_file);
+         if (bytes_read < 512)
+         {
+            fclose(eth_file);
+         }
+
+         // Build TFTP response
+         tftp_tx_header->opcode = htons(0x0004);             // ACK
+         tftp_tx_header->block  = htons(block);
+
+         udp_payload_len = 4;
          break;
 
       case 0x0004 : // ACK
+         block = ntohs(tftp_rx_header->block);
+         address = block*512UL;
+
+         // Build TFTP response
          tftp_tx_header->opcode = htons(0x0003);             // DATA
-         uint16_t block = ntohs(tftp_rx_header->block);
          tftp_tx_header->block  = htons(block+1);            // Next block
-         uint32_t address = block*512UL;
          fseek(eth_file, address, SEEK_SET);
          bytes_read = fread(tftp_tx_header->data, 1, 512, eth_file);
 
@@ -206,21 +231,7 @@ eth_tftp_respond()
          }
          printf("\n");
 
-         // UDP header
-         tftp_tx_header->udp_header.dst = tftp_rx_header->udp_header.src;
-         tftp_tx_header->udp_header.src = htons(0x4A4D);    // "JM"
-         tftp_tx_header->udp_header.len = htons(bytes_read+4+8);
-
-         // IP header
-         tftp_tx_header->udp_header.ip_header.dst = tftp_rx_header->udp_header.ip_header.src;
-         tftp_tx_header->udp_header.ip_header.src = tftp_rx_header->udp_header.ip_header.dst;
-
-         // length is in little-endian
-         tftp_tx_header->udp_header.ip_header.mac_header.eth_header.length =
-            tftp_tx_header->data - (uint8_t *)tftp_tx_header + bytes_read-2;
-
-         eth_buffer_valid = true;
-         eth_rx_counter = 200;   // Corresponds to 276 bytes of the MAC frame.
+         udp_payload_len = bytes_read+4;
          break;
 
       case 0x0005 : // ERROR
@@ -229,6 +240,26 @@ eth_tftp_respond()
       default:
          break;
    }
+
+   if (udp_payload_len)
+   {
+      // UDP header
+      tftp_tx_header->udp_header.dst = tftp_rx_header->udp_header.src;
+      tftp_tx_header->udp_header.src = htons(0x4A4D);    // "JM"
+      tftp_tx_header->udp_header.len = htons(udp_payload_len+8);
+
+      // IP header
+      tftp_tx_header->udp_header.ip_header.dst = tftp_rx_header->udp_header.ip_header.src;
+      tftp_tx_header->udp_header.ip_header.src = tftp_rx_header->udp_header.ip_header.dst;
+
+      // length is in little-endian
+      tftp_tx_header->udp_header.ip_header.mac_header.eth_header.length =
+         udp_payload_len + 8 + 20 + 14;
+
+      eth_buffer_valid = true;
+      eth_rx_counter   = 200 + udp_payload_len;
+   }
+
 } // eth_tftp_respond
 
 
