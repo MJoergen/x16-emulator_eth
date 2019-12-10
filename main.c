@@ -34,6 +34,7 @@
 #ifdef WITH_YM2151
 #include "ym2151.h"
 #endif
+#include "eth.h"
 
 #define AUDIO_SAMPLES 4096
 #define SAMPLERATE 22050
@@ -970,6 +971,7 @@ emulator_loop(void *param)
 			joystick_step();
 			vera_spi_step();
 			vera_uart_step();
+         eth_step();
 			new_frame |= video_step(MHZ);
 		}
 
