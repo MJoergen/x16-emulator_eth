@@ -36,7 +36,7 @@
 #endif
 #include "eth.h"
 
-#define AUDIO_SAMPLES 4096
+#define AUDIO_SAMPLES 128
 #define SAMPLERATE 22050
 
 #ifdef __EMSCRIPTEN__
@@ -412,7 +412,7 @@ init_audio()
 	}
 
 	// init YM2151 emulation. 4 MHz clock
-	YM_Create(4000000);
+	YM_Create(2*3579545);
 	YM_init(have.freq, 60);
 
 	// start playback
