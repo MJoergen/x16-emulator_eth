@@ -34,6 +34,7 @@
 #include "rom_symbols.h"
 #include "ym2151.h"
 #include "audio.h"
+#include "eth.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -937,6 +938,7 @@ emulator_loop(void *param)
 			spi_step();
 			joystick_step();
 			vera_spi_step();
+			eth_step();
 			new_frame |= video_step(MHZ);
 		}
 		audio_render(clocks);

@@ -11,6 +11,7 @@
 #include "video.h"
 #include "ym2151.h"
 #include "ps2.h"
+#include "eth.h"
 
 uint8_t ram_bank;
 uint8_t rom_bank;
@@ -69,6 +70,9 @@ real_read6502(uint16_t address, bool debugOn, uint8_t bank)
 		} else if (address >= 0x9fb0 && address < 0x9fc0) {
 			// emulator state
 			return emu_read(address & 0xf, debugOn);
+      } else if (address >= 0x9fc0 && address < 0x9fd0) {
+         // emulator state
+         return eth_read(address & 0xf, debugOn);
 		} else {
 			return 0;
 		}
@@ -104,7 +108,10 @@ write6502(uint16_t address, uint8_t value)
 			// TODO: RTC
 		} else if (address >= 0x9fb0 && address < 0x9fc0) {
 			// emulator state
-			emu_write(address & 0xf, value);
+         emu_write(address & 0xf, value);
+      } else if (address >= 0x9fc0 && address < 0x9fd0) {
+         // emulator state
+         eth_write(address & 0xf, value);
 		} else if (address == 0x9fe0) {
 			lastAudioAdr = value;
 		} else if (address == 0x9fe1) {
